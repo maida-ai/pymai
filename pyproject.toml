@@ -1,0 +1,37 @@
+[project]
+name = "pymai"
+description = "Tiny-yet-powerful Python framework for building composable AI agents and durable workflows."
+readme = "README.md"
+requires-python = ">=3.11"
+dynamic = [
+    "version",
+    "dependencies",
+    "optional-dependencies",
+]
+
+[tool.setuptools.dynamic]
+version = {file=["version"]}
+dependencies = {file=["requirements.txt"]}
+optional-dependencies = {dev={file=["requirements-dev.txt"]}}
+
+[tool.poetry]
+package-mode = false
+version = "0.0.0"
+
+[tool.poetry-dynamic-versioning]
+enable = true
+from-file = {source="version"}
+
+[tool.poetry-dynamic-versioning.substitution]
+files = ["*.py", "*/__init__.py", "*/__version__.py", "*/_version.py"]
+patterns = [
+    '''(^__version__\s*(?::.*?)?=\s*['"])[^'"]*(['"])''',
+    { value = '''(^__version_tuple__\s*(?::.*?)?=\s*\()[^)]*(\))''', mode = "tuple" },
+]
+
+[tool.poetry.requires-plugins]
+poetry-dynamic-versioning = { version = ">=1.0.0,<2.0.0", extras = ["plugin"] }
+
+[build-system]
+requires = ["poetry-core>=1.0.0", "poetry-dynamic-versioning>=1.0.0,<2.0.0"]
+build-backend = "poetry_dynamic_versioning.backend"
