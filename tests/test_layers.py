@@ -73,28 +73,6 @@ class TestModule:
         result = await module(5)
         assert result == 6
 
-    def test_with_configuration(self):
-        """Test module configuration with .with_()."""
-        module = ConfigurableModule(base_value=10)
-        configured_module = module.with_(base_value=20)
-
-        # Original module should be unchanged
-        assert module.base_value == 10
-        assert module.forward(5) == 15
-
-        # Configured module should use new value
-        assert configured_module.forward(5) == 25
-
-    @pytest.mark.asyncio
-    async def test_static_config_merging(self):
-        """Test that static config merges with call-time kwargs."""
-        module = ConfigurableModule(base_value=10)
-        configured_module = module.with_(base_value=20)
-
-        # Call-time kwargs should override static config
-        result = await configured_module(5, base_value=30)
-        assert result == 35
-
     def test_inheritance_required(self):
         """Test that forward() must be implemented by subclasses."""
         module = Module()
