@@ -1,0 +1,19 @@
+# Core Dependencies
+anyio~=4.9.0
+pydantic~=2.11.7
+
+# Observability
+opentelemetry-api~=1.35.0
+opentelemetry-sdk~=1.35.0
+opentelemetry-instrumentation~=0.56b0
+
+# Async Support
+asyncio-mqtt~=0.16.2
+
+# Data Processing
+numpy~=2.3.2
+pandas~=2.3.1
+
+# Utilities
+click~=8.2.1
+pyyaml~=6.0.2

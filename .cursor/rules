@@ -1,0 +1,243 @@
+# pymai Framework Development Rules
+
+## Project Overview
+pymai is a tiny-yet-powerful Python framework for composable AI agents and durable workflows, inspired by PyTorch's modular design. The goal is to provide a unified Module abstraction that works seamlessly with both sync and async code, with built-in observability and context propagation.
+
+## Core Architecture Principles
+
+### 1. Single Module Abstraction (DP-1)
+- All components inherit from `mai.layers.Module`
+- One class to learn, unified interface
+- Subclass and implement `forward()` method
+
+### 2. Sync/Async Auto-Detection (DP-2)
+- Runtime automatically detects if `forward()` is sync or async
+- Sync functions run in thread pool to keep event loop responsive
+- No manual async/await boilerplate required
+
+### 3. Type-Safe I/O (DP-3)
+- Use Pydantic models for data validation and serialization
+- Zero-copy data flow between modules via strongly-typed Payload envelopes
+- Strong typing for all public APIs with runtime validation
+- **"Know your types; Fail if unsure"** - explicit type definitions required
+
+### 4. Invisible Context (DP-4)
+- Context propagation via `contextvars`
+- Deadlines, tracing, auth without polluting signatures
+- Access via `get_current_context()` when needed
+
+### 5. Observability First (DP-5)
+- Rich tracing with OpenTelemetry
+- Built-in metrics and error tracking
+- Production-ready monitoring out of the box
+
+### 6. Configurable Modules (DP-6)
+- Use `.with_(**cfg)` for static configuration
+- Per-call overrides via kwargs
+- Configuration flows through context
+
+### 7. Micro-Kernel Core (DP-7)
+- Core framework ≤ 2kLOC
+- Heavy lifting in backend implementations
+- Pluggable execution engines
+
+### 8. Durable Workflows (DP-8)
+- Replay-able, resumable, idempotent steps
+- Future: Temporal-style distributed execution
+- Checkpoint and recovery capabilities
+
+## Code Style & Standards
+
+### Python Conventions
+- **Line length**: 120 characters (modern screen-friendly)
+- **Type hints**: Required for all public APIs
+- **Docstrings**: Google style for all public methods
+- **Imports**: Sorted with isort, Black-compatible
+- **String formatting**: f-strings preferred over .format() or %
+- **Path handling**: pathlib.Path over os.path
+- **Type annotations**: Use | for union types (Python 3.10+)
+
+### Module Development Pattern
+```python
+from mai.layers import Module
+from mai.types import InputType, OutputType  # Strongly typed Pydantic models
+from pydantic import BaseModel
+
+class InputType(BaseModel):
+    """Strongly typed input specification."""
+    text: str
+    max_length: int = 100
+
+class OutputType(BaseModel):
+    """Strongly typed output specification."""
+    processed_text: str
+    word_count: int
+    confidence: float
+
+class MyModule(Module):
+    """Brief description of module functionality."""
+
+    def __init__(self, param1: str, param2: int = 42):
+        """Initialize module with configuration."""
+        super().__init__()
+        self.param1 = param1
+        self.param2 = param2
+
+    def forward(self, input_data: InputType) -> OutputType:
+        """Process input and return result.
+
+        Args:
+            input_data: Strongly typed input with validation
+
+        Returns:
+            Strongly typed output with validation
+
+        Raises:
+            ValueError: When input validation fails
+        """
+        # Implementation here - types are guaranteed by Pydantic
+        return OutputType(
+            processed_text=f"{input_data.text[:input_data.max_length]}",
+            word_count=len(input_data.text.split()),
+            confidence=0.95
+        )
+```
+
+### Testing Requirements
+- Unit tests for all new functionality
+- Test both sync and async forward methods
+- **Type validation tests** - ensure Pydantic models work correctly
+- **Edge case testing** - test invalid inputs and type mismatches
+- Aim for >90% test coverage
+- Include edge cases and error conditions
+
+## Package Structure Guidelines
+
+### Directory Organization
+```
+mai/
+├── layers/        # Core Module abstraction and atomic layers
+├── core/          # Runtime engine, tracing, optimized backends
+├── types/         # Pydantic models and type adapters
+├── models/        # High-level model wrappers
+├── metrics/       # Metric computation modules
+├── contrib/       # Community integrations
+└── third-party/   # Vendored dependencies
+```
+
+### Import Patterns
+- Use absolute imports within the package
+- Keep imports at module level when possible
+- Group imports: stdlib, third-party, local
+- Use `from typing import` for type hints (not `import typing`)
+- Prefer `from pathlib import Path` over `import pathlib`
+
+### Modern Python Patterns
+- **Type annotations**: Use `list[str]` instead of `List[str]` (Python 3.9+)
+- **Union types**: Use `str | None` instead of `Union[str, None]` (Python 3.10+)
+- **Match statements**: Use `match/case` for complex conditionals (Python 3.10+)
+- **Dataclasses**: Use `@dataclass` for simple data containers
+- **Context managers**: Use `contextlib.ExitStack` for multiple contexts
+- **Async patterns**: Use `asyncio.gather()` for concurrent operations
+- **Error handling**: Use specific exception types, avoid bare `except:`
+
+## Development Workflow
+
+### When Creating New Modules
+1. **Inherit from Module**: Always subclass `mai.layers.Module`
+2. **Implement forward()**: Define the core processing logic
+3. **Add type hints**: Use proper typing for inputs/outputs
+4. **Write docstrings**: Google-style documentation
+5. **Create tests**: Both unit and integration tests
+6. **Update examples**: Add to examples/ directory
+
+### When Modifying Existing Code
+1. **Preserve API compatibility**: Don't break existing interfaces
+2. **Update documentation**: Keep docs in sync with code
+3. **Add tests**: Ensure new functionality is tested
+4. **Run quality checks**: Black, Ruff, MyPy before committing
+
+### When Adding Dependencies
+1. **Minimal dependencies**: Prefer standard library when possible
+2. **Version pinning**: Use specific versions in requirements
+3. **Optional dependencies**: Use extras for optional features
+4. **Documentation**: Update installation instructions
+
+## Common Patterns & Anti-Patterns
+
+### ✅ Good Patterns
+- Use `super().__init__()` in Module subclasses
+- **Define explicit Pydantic models** for all inputs and outputs
+- **Use strong typing** - avoid `Any` types in public APIs
+- Implement both sync and async forward methods when needed
+- Use context for cross-cutting concerns (timeouts, tracing)
+- Leverage `.with_()` for configuration
+- Write comprehensive tests including type validation
+
+### ❌ Anti-Patterns
+- Don't bypass the Module abstraction
+- **Don't use `Any` types** in public APIs - define explicit Pydantic models
+- **Don't skip type validation** - let Pydantic handle runtime checks
+- Don't hardcode configuration values
+- Don't ignore type hints
+- Don't skip error handling
+- Don't forget to call `super().__init__()`
+
+## Performance Considerations
+
+### Async Execution
+- Keep sync forward methods fast and non-blocking
+- Use thread pool for CPU-intensive operations
+- Leverage async forward for I/O operations
+- Avoid blocking the event loop
+
+### Memory Management
+- Use zero-copy data flow when possible
+- Implement proper cleanup in `__del__` if needed
+- Monitor memory usage in long-running workflows
+
+## Debugging & Troubleshooting
+
+### Common Issues
+1. **Missing super().__init__()**: Always call in Module subclasses
+2. **Type validation errors**: Ensure Pydantic models are properly defined and validated
+3. **Type mismatches**: Check that input/output types match between connected modules
+4. **Context issues**: Use `get_current_context()` for debugging
+5. **Async/sync confusion**: Let runtime handle detection
+
+### Debugging Tools
+- Use `get_current_context()` to inspect context
+- **Use Pydantic validation errors** to debug type issues
+- **Check type compatibility** between module inputs/outputs
+- Enable OpenTelemetry tracing for workflow analysis
+- Use pytest with `-v` for verbose test output
+- Check coverage with `pytest --cov=mai`
+
+## Future Considerations
+
+### Roadmap Alignment
+- Keep changes aligned with M-0 through M-4 milestones
+- Consider distributed workflow requirements
+- Plan for XCP transport integration
+- Design for quantized model support
+
+### Backward Compatibility
+- Maintain API stability within major versions
+- Use deprecation warnings for breaking changes
+- Provide migration guides for major updates
+
+## AI Assistant Guidelines
+
+When helping with this codebase:
+
+1. **Follow PyTorch inspiration**: Suggest modular, composable designs
+2. **Emphasize strong typing**: Always define explicit Pydantic models for data transfer
+3. **Enforce "Know your types; Fail if unsure"**: Reject `Any` types in public APIs
+4. **Consider async/sync**: Always think about both execution modes
+5. **Include tests**: Always suggest or provide test code including type validation
+6. **Update documentation**: Keep docs in sync with code changes
+7. **Respect architecture**: Don't violate the 8 design principles
+8. **Think production**: Consider observability, error handling, performance
+9. **Maintain consistency**: Follow established patterns and conventions
+
+Remember: The goal is to make AI agent development as simple and composable as PyTorch made deep learning.

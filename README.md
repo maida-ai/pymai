@@ -1,19 +1,19 @@
 # pymai
 
-**Tiny‑yet‑powerful Python framework for composable AI agents and durable workflows.**
+**Tiny-yet-powerful Python framework for composable AI agents and durable workflows.**
 
 
 ## ✨ Key Features
 
-* **Unified `Module` abstraction** – located in `mai.layers`; write `forward()` once (sync **or** async) and chain Modules like plain functions.
-* **Invisible Context** – deadlines, tracing, auth, and per‑request overrides propagate via `contextvars`; no boilerplate parameters.
-* **Zero‑copy I/O** – user dataclasses/Pydantic models auto‑cast to internal `Payload` envelopes.
-* **Observability‑first** – OpenTelemetry spans and rich error metadata out of the box.
-* **Workflow‑ready** – roadmap includes a Temporal‑style engine for retries, checkpoints, and distributed execution.
-* **Backend agility** – high‑performance kernels in Cython, Rust, or C++ live under `mai/core`, swap in without touching business logic.
+* **Unified `Module` abstraction** -- located in `mai.layers`; write `forward()` once (sync **or** async) and chain Modules like plain functions.
+* **Invisible Context** -- deadlines, tracing, auth, and per-request overrides propagate via `contextvars`; no boilerplate parameters.
+* **Zero-copy I/O** -- user dataclasses/Pydantic models auto-cast to internal `Payload` envelopes.
+* **Observability-first** -- OpenTelemetry spans and rich error metadata out of the box.
+* **Workflow-ready** -- roadmap includes a Temporal-style engine for retries, checkpoints, and distributed execution.
+* **Backend agility** -- high-performance kernels in Cython, Rust, or C++ live under `mai/core`, swap in without touching business logic.
 
 
-## 🚀 Quick Start
+## 🚀 Quick Start
 
 ```bash
 # 1. Install (editable mode for hacking)
@@ -55,20 +55,20 @@ score = await pipeline(text=["hello world", "Hello, world!"])
 print(score)
 ```
 
-*Notice*: no explicit Context object—timeouts, tracing, and overrides ride an internal `Context` created automatically.
+*Notice*: no explicit Context object--timeouts, tracing, and overrides ride an internal `Context` created automatically.
 
 
-## 🏗️ Folder Structure
+## 🏗️ Folder Structure
 
 ```
 mai/
  ├─ layers/        # Atomic Layers + unified Module (torch/nn analogue)
- ├─ core/          # Optimised back‑ends (Cython/Rust/C++), runtime engine & tracing
- ├─ types/         # Strongly‑typed data definitions & adapters
- ├─ models/        # High‑level model wrappers (tokenisers, embedders…)
- ├─ metrics/       # Metric Modules (similarity, classification metrics…)
+ ├─ core/          # Optimised back-ends (Cython/Rust/C++), runtime engine & tracing
+ ├─ types/         # Strongly-typed data definitions & adapters
+ ├─ models/        # High-level model wrappers (tokenisers, embedders...)
+ ├─ metrics/       # Metric Modules (similarity, classification metrics...)
  ├─ contrib/       # Community bridges (LangChain, OpenAI, etc.)
- └─ third‑party/   # Vendored sub‑modules (e.g., XCP transport)
+ └─ third-party/   # Vendored sub-modules (e.g., XCP transport)
 ```
 
 
@@ -76,11 +76,11 @@ mai/
 
 | Version | Highlights                                                                 | Target   |
 | ------- | -------------------------------------------------------------------------- | -------- |
-| **0.1** | Core abstractions (`mai.layers`), local Engine (`mai.core`), demo pipeline | Aug 2025 |
-| 0.2     | `Graph` optimiser + YAML loader                                            | Sep 2025 |
-| 0.3     | XCP transport adapter                                                      | Oct 2025 |
-| 0.4     | Quantised micro‑model library                                              | Nov 2025 |
-| 0.5     | **Distributed Workflow Engine**                                            | Jan 2026 |
+| **0.1** | Core abstractions (`mai.layers`), local Engine (`mai.core`), demo pipeline | Aug 2025 |
+| 0.2     | `Graph` optimiser + YAML loader                                            | Sep 2025 |
+| 0.3     | XCP transport adapter                                                      | Oct 2025 |
+| 0.4     | Quantised micro-model library                                              | Nov 2025 |
+| 0.5     | **Distributed Workflow Engine**                                            | Jan 2026 |
 
 
 ## 🤝 Contributing
@@ -98,8 +98,8 @@ pytest -q           # run unit tests
 
 ## 📄 License
 
-Apache 2.0 – see `LICENSE` for details.
+Apache 2.0 -- see `LICENSE` for details.
 
 ---
 
-> Made with ♥ by the **Maida.AI Team**
+> Made with ♥ by the **Maida.AI Team**
