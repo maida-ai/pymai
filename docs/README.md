@@ -6,10 +6,14 @@ This directory contains the Sphinx documentation for the pymai project.
 
 ### Prerequisites
 
-Make sure you have the development dependencies installed:
+Make sure you have the documentation dependencies installed:
 
 ```bash
-poetry install --with dev
+# Install only documentation dependencies
+poetry install --with docs
+
+# Or install all development dependencies (including docs)
+poetry install --with dev,docs
 ```
 
 ### Building Documentation
@@ -43,6 +47,14 @@ cd docs
 make clean
 ```
 
+## Dependency Groups
+
+The project uses Poetry dependency groups to organize dependencies:
+
+- **`docs`**: Documentation generation (Sphinx, themes)
+- **`dev`**: Development tools (testing, linting, formatting)
+- **`dev,docs`**: Both development and documentation tools
+
 ## GitHub Actions
 
 The documentation is automatically built and deployed to GitHub Pages via the `.github/workflows/sphinx-docs.yml` workflow.
@@ -50,7 +62,7 @@ The documentation is automatically built and deployed to GitHub Pages via the `.
 The workflow:
 1. Triggers on pushes to `main` and `develop` branches
 2. Sets up Python 3.11 and Poetry
-3. Installs dependencies including Sphinx
+3. Installs dependencies including Sphinx (`--with dev,docs`)
 4. Generates API documentation from docstrings
 5. Builds the documentation
 6. Deploys to GitHub Pages (only on `main` branch)

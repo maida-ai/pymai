@@ -44,9 +44,6 @@ mypy = "^1.17.0"
 pre-commit = "^4.2.0"
 # Type Checking
 types-requests = "^2.32.4.20250611"
-# Documentation
-sphinx = "^8.2.3"
-sphinx-rtd-theme = "^3.0.2"
 # Development Tools
 ipython = "^9.4.0"
 jupyter = "^1.1.1"
@@ -54,6 +51,11 @@ jupyter = "^1.1.1"
 rich = "^14.1.0"
 typer = "^0.16.0"
 watchdog = "^6.0.0"
+
+[tool.poetry.group.docs.dependencies]
+# Documentation
+sphinx = "^8.2.3"
+sphinx-rtd-theme = "^3.0.2"
 
 [tool.poetry-dynamic-versioning]
 enable = true
