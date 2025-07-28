@@ -1,0 +1,12 @@
+---
+description: Using various rules
+globs:
+alwaysApply: false
+---
+
+- Always ask before running commands
+- `python`
+  - Use `poetry run python`
+  - If installing packages, either use `poetry add` or `poetry run pip`
+- System-wide
+  - Always add `-p` argument to `mkdir`

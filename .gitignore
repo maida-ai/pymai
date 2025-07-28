@@ -30,7 +30,7 @@ htmlcov/
 
 # Documentation
 docs/_build/
-docs/api/
+# docs/api/
 
 # Jupyter Notebooks
 .ipynb_checkpoints/
