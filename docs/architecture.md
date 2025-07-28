@@ -24,7 +24,7 @@
 
 ## 3 Core Abstractions
 
-\### 3.1 `mai.layers.Module` (unified per-instance cfg)
+### 3.1 `mai.layers.Module` (unified per-instance cfg)
 
 ```python
 import asyncio, inspect, anyio, contextvars
@@ -61,7 +61,7 @@ class Module:
         raise NotImplementedError
 ```
 
-\### 3.2 `Context` -- request-scoped & concurrency-safe
+### 3.2 `Context` -- request-scoped & concurrency-safe
 `Context` captures deadlines, trace spans, auth, retries--**one immutable instance per top-level call**. Stored in a `contextvars.ContextVar`, every async task or thread created *after* `_current_ctx.set(...)` receives **its own snapshot**, ensuring that parallel branches and delayed or conditional layers remain isolated.
 
 ```python
@@ -95,7 +95,7 @@ class Context(BaseModel, frozen=True):
 
         deadline = None
         if (t := src.pop("timeout", None)) is not None:
-            deadline = time.time() + t
+            deadline = time.monotonic() + t
 
         meta = {k: v for k, v in list(src.items()) if not k.startswith("_")}
         for k in meta:
@@ -112,16 +112,16 @@ class Context(BaseModel, frozen=True):
         return self.copy(update={"retry_count": self.retry_count + 1})
 ```
 
-\### 3.3 `Layer` & `Payload`
+### 3.3 `Layer` & `Payload`
 *Layers* are atomic async callables; **`Payload`** is a strongly-typed envelope auto-generated from user types to ensure safe, structured data flow.
 
-\### 3.4 `Graph` (DAG)
+### 3.4 `Graph` (DAG)
 A declarative wrapper that turns interconnected Modules into an executable DAG--optimising chains, inserting casting layers, and emitting a **WorkflowPlan** for replay and persistence.
 
-\### 3.5 `Engine`
+### 3.5 `Engine`
 Local asyncio + thread-pool scheduler powering **Sequential**, **Parallel**, **BlockingDelay**, **NonBlockingDelay**, and **Conditional** composites. Parallel branches inherit the same immutable `Context`; blocking delays pause within the same task without affecting siblings.
 
-\### 3.6 `TraceHandle`
+### 3.6 `TraceHandle`
 Per-call object exposing timings, payload sizes, and error metadata; integrates with OpenTelemetry exporters.
 
 ## 4 Developer Quick-Start
