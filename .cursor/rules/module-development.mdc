@@ -1,0 +1,62 @@
+---
+description: Module and Layer Development
+globs: mai/**/*.py
+alwaysApply: false
+---
+## When Creating New Modules
+1. **Inherit from Module**: Always subclass `mai.layers.Module`
+2. **Implement forward()**: Define the core processing logic
+3. **Add type hints**: Use proper typing for inputs/outputs
+4. **Write docstrings**: Google-style documentation
+5. **Create tests**: Both unit and integration tests
+6. **Update examples**: Add to examples/ directory
+
+## Module Development Pattern
+- All IO to the `Module` types must be strongly typed
+- Example:
+```python
+from mai.layers import Module
+from mai.types import InputType, OutputType  # Strongly typed Pydantic models
+from pydantic import BaseModel
+
+class InputType(BaseModel):
+    """Strongly typed input specification."""
+    text: str
+    max_length: int = 100
+
+
+class OutputType(BaseModel):
+    """Strongly typed output specification."""
+    processed_text: str
+    word_count: int
+    confidence: float
+
+
+class MyModule(Module):
+    """Brief description of module functionality."""
+
+    def __init__(self, param1: str, param2: int = 42):
+        """Initialize module with configuration."""
+        super().__init__()  # Optional, but encouraged
+        self.param1 = param1
+        self.param2 = param2
+
+    def forward(self, input_data: InputType) -> OutputType:
+        """Process input and return result.
+
+        Args:
+            input_data: Strongly typed input with validation
+
+        Returns:
+            Strongly typed output with validation
+
+        Raises:
+            ValueError: When input validation fails
+        """
+        # Implementation here - types are guaranteed by Pydantic
+        return OutputType(
+            processed_text=f"{input_data.text[:input_data.max_length]}",
+            word_count=len(input_data.text.split()),
+            confidence=0.95
+        )
+```
