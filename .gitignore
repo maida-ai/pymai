@@ -30,7 +30,13 @@ htmlcov/
 
 # Documentation
 docs/_build/
-# docs/api/
+docs/_static/
+docs/_templates/
+# Auto-generated API documentation
+docs/mai.rst
+docs/mai.layers.rst
+docs/mai.types.rst
+docs/modules.rst
 
 # Jupyter Notebooks
 .ipynb_checkpoints/
@@ -64,3 +70,12 @@ poetry.lock
 .mypy_cache/
 .dmypy.json
 dmypy.json
+
+# Ruff
+.ruff_cache/
+
+# Additional Python patterns
+*.pyo
+*.pyd
+*.pyx
+*.pyi
