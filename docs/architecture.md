@@ -27,11 +27,9 @@
 ### 3.1 `mai.layers.Module` (unified per-instance cfg)
 
 ```python
-import asyncio, inspect, anyio, contextvars
+import asyncio, inspect, anyio
 from typing import Any
 from mai.types import Context  # defined below
-
-_current_ctx: contextvars.ContextVar[Context] = contextvars.ContextVar("_current_ctx")
 
 class Module:
     """Base class for every *pymai* layer."""
@@ -47,69 +45,45 @@ class Module:
 
     async def __call__(self, *args, **kwargs):
         merged = {**self._static_cfg, **kwargs}
-        ctx = Context.from_kwargs(merged)
-        token = _current_ctx.set(ctx)
+        token = Context.set(**merged)
         try:
             fn = inspect.unwrap(self.forward)
             if inspect.iscoroutinefunction(fn):
                 return await fn(*args, **merged)
             return await anyio.to_thread.run_sync(fn, *args, **merged)
         finally:
-            _current_ctx.reset(token)
+            Context.reset(token)
 
     def forward(self, *args, **kwargs):
         raise NotImplementedError
 ```
 
 ### 3.2 `Context` -- request-scoped & concurrency-safe
-`Context` captures deadlines, trace spans, auth, retries--**one immutable instance per top-level call**. Stored in a `contextvars.ContextVar`, every async task or thread created *after* `_current_ctx.set(...)` receives **its own snapshot**, ensuring that parallel branches and delayed or conditional layers remain isolated.
+`Context` captures deadlines, trace spans, auth, retries--**one instance per top-level call**. Stored in a `contextvars.ContextVar`, every async task or thread created *after* `Context.set(...)` receives **its own snapshot**, ensuring that parallel branches and delayed or conditional layers remain isolated.
+
+**Key features:**
+- **Deadlines** must be specified in monotonic time (not wall clock time)
+- **Metadata** propagation for request-scoped data
+- **Retry tracking** and **step identification**
+- **OpenTelemetry span** integration
+- **Context management** via `Context.set()`, `Context.get()`, `Context.reset()`
 
 ```python
-from __future__ import annotations
-import time, uuid
-from pydantic import BaseModel, Field
-from typing import Any, Dict
+class Context(pydantic.BaseModel):
+    """Request-scoped carrier for deadlines, tracing, auth, retries, etc."""
 
-class Context(BaseModel, frozen=True):
-    """Immutable request-scoped carrier for deadlines, tracing, auth, etc."""
-    deadline: float | None = None
-    metadata: Dict[str, Any] = Field(default_factory=dict)
+    deadline: float | None = None  # monotonic time only
+    metadata: dict[str, Any] = pydantic.Field(default_factory=dict)
     retry_count: int = 0
-    step_id: str = Field(default_factory=lambda: uuid.uuid4().hex)
-    span: Any | None = None
+    step_id: str = pydantic.Field(default_factory=lambda: uuid.uuid4().hex)
+    span: Any | None = None  # OpenTelemetry span (optional)
 
-    # ----- construction helper -------------------------------------
-    @staticmethod
-    def from_kwargs(src: Dict[str, Any] | None) -> "Context":
-        if src is None:
-            return Context()
-        if not isinstance(src, dict):
-            raise TypeError("from_kwargs expects dict | None")
-
-        # explicit override
-        for key in ("_ctx", "ctx"):
-            ctx = src.get(key)
-            if isinstance(ctx, Context):
-                src.pop(key)
-                return ctx
-
-        deadline = None
-        if (t := src.pop("timeout", None)) is not None:
-            deadline = time.monotonic() + t
-
-        meta = {k: v for k, v in list(src.items()) if not k.startswith("_")}
-        for k in meta:
-            src.pop(k, None)
-
-        return Context(deadline=deadline, metadata=meta)
-
-    # immutable update helpers --------------------------------------
-    def with_metadata(self, **extra) -> "Context":
-        nm = {**self.metadata, **extra}
-        return self.copy(update={"metadata": nm})
-
-    def bumped_retry(self) -> "Context":
-        return self.copy(update={"retry_count": self.retry_count + 1})
+    @classmethod
+    def set(cls, **kwargs: Any) -> Token: ...
+    @classmethod
+    def get(cls) -> "Context": ...
+    @classmethod
+    def reset(cls, token: Token) -> None: ...
 ```
 
 ### 3.3 `Layer` & `Payload`
@@ -119,7 +93,7 @@ class Context(BaseModel, frozen=True):
 A declarative wrapper that turns interconnected Modules into an executable DAG--optimising chains, inserting casting layers, and emitting a **WorkflowPlan** for replay and persistence.
 
 ### 3.5 `Engine`
-Local asyncio + thread-pool scheduler powering **Sequential**, **Parallel**, **BlockingDelay**, **NonBlockingDelay**, and **Conditional** composites. Parallel branches inherit the same immutable `Context`; blocking delays pause within the same task without affecting siblings.
+Local asyncio + thread-pool scheduler powering **Sequential**, **Parallel**, **BlockingDelay**, **NonBlockingDelay**, and **Conditional** composites. Parallel branches inherit the same `Context`; blocking delays pause within the same task without affecting siblings.
 
 ### 3.6 `TraceHandle`
 Per-call object exposing timings, payload sizes, and error metadata; integrates with OpenTelemetry exporters.
@@ -196,7 +170,7 @@ print(result)
 
 1. **Build phase** -- instantiate Modules/Layers or load a YAML spec -> produces a `Graph`.
 2. **Compile phase** -- optimiser folds trivial chains, inserts casting and async boundaries, emits a **WorkflowPlan**.
-3. **Run phase (local)** -- `Engine` drives asyncio and threads; Context deadlines enforced; Parallel branches inherit immutable Context.
+3. **Run phase (local)** -- `Engine` drives asyncio and threads; Context deadlines enforced; Parallel branches inherit the same Context.
 4. **Run phase (distributed, future)** -- WorkflowPlan executed by Temporal-lite runtime with durable state, retries, and remote executors.
 5. **Trace export** -- spans and logs emitted via OTLP JSON.
 
