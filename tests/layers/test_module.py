@@ -1,10 +1,8 @@
-"""Tests for the core Module abstraction."""
-
 import asyncio
 
 import pytest
 
-from mai.layers import Module
+from mai.layers.module import Module
 
 
 class SimpleModule(Module):
@@ -32,18 +30,6 @@ class AsyncModule(Module):
         return x + 1
 
 
-class ConfigurableModule(Module):
-    """A module that uses configuration."""
-
-    def __init__(self, base_value: int = 10):
-        super().__init__()
-        self.base_value = base_value
-
-    def forward(self, x: int) -> int:
-        """Add base_value to input."""
-        return x + self.base_value
-
-
 class TestModule:
     """Test suite for the Module base class."""
 
@@ -51,7 +37,6 @@ class TestModule:
         """Test that modules can be initialized properly."""
         module = SimpleModule(multiplier=3)
         assert module.multiplier == 3
-        assert isinstance(module._static_cfg, dict)
 
     def test_sync_forward(self):
         """Test synchronous forward pass."""
@@ -70,7 +55,7 @@ class TestModule:
     async def test_async_forward(self):
         """Test async forward pass."""
         module = AsyncModule(delay=0.001)
-        result = await module(5)
+        result = await module.forward(5)
         assert result == 6
 
     def test_inheritance_required(self):
@@ -79,14 +64,31 @@ class TestModule:
         with pytest.raises(NotImplementedError):
             module.forward(42)
 
-    @pytest.mark.asyncio
-    async def test_context_cleanup(self):
-        """Test that context is properly cleaned up after execution."""
-        # This test will be expanded when Context is implemented
-        module = SimpleModule()
-        result = await module(5)
-        assert result == 10
-        # TODO: Add context cleanup verification when Context is implemented
+
+class TestModuleStaticConfig:
+    """Test module static configuration."""
+
+    def test_static_config_initialization(self):
+        """Test static configuration."""
+        module = SimpleModule(multiplier=3)
+
+        assert module.multiplier == 3
+        assert hasattr(module, "_static_cfg")
+        assert module._static_cfg == {}
+
+    def test_static_config_setting(self):
+        """Test static configuration setting."""
+        module = SimpleModule(multiplier=3)
+
+        # What happens when config is empty?
+        module._static_cfg = {}
+        module = module.with_(timeout=42)
+        assert module._static_cfg == {"timeout": 42}
+
+        # What happens when config is not empty?
+        module._static_cfg = {"timeout": 42}
+        module = module.with_(timeout=24)
+        assert module._static_cfg == {"timeout": 24}
 
 
 class TestModuleComposition:

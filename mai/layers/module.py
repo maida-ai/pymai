@@ -1,12 +1,9 @@
-import contextvars
 import inspect
 from typing import Any, Self
 
 import anyio
 
-from mai.types import Context
-
-_current_ctx: contextvars.ContextVar[Context] = contextvars.ContextVar("_current_ctx")
+from mai.types.context import Context, get_current_ctx
 
 
 class Module:
@@ -28,7 +25,7 @@ class Module:
     async def __call__(self, *args: Any, **kwargs: Any) -> Any:
         # merge static + call-time settings
         kwargs = {**self._static_cfg, **kwargs}
-        ctx_token = _current_ctx.set(Context.from_kwargs(kwargs))
+        ctx_token = get_current_ctx().set(Context.from_kwargs(kwargs))
         try:
             fn = inspect.unwrap(self.forward)
             if inspect.iscoroutinefunction(fn):
@@ -36,7 +33,7 @@ class Module:
             # run sync forward in a worker thread so event loop stays responsive
             return await anyio.to_thread.run_sync(fn, *args, **kwargs)
         finally:
-            _current_ctx.reset(ctx_token)
+            get_current_ctx().reset(ctx_token)
 
     def forward(self, *args: Any, **kwargs: Any) -> Any:
         """Override in subclasses; may be sync or async."""

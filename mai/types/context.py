@@ -1,3 +1,4 @@
+import contextvars
 import time
 import uuid
 from typing import Any
@@ -52,5 +53,12 @@ class Context(BaseModel):
         # Remove copied keys so they don't leak to downstream Modules
         for k in meta.keys():
             src.pop(k, None)
-
         return Context(deadline=deadline, metadata=meta)
+
+
+_current_ctx: contextvars.ContextVar[Context] = contextvars.ContextVar("_current_ctx")
+
+
+def get_current_ctx() -> contextvars.ContextVar:
+    """Get the current context."""
+    return _current_ctx
