@@ -1,3 +1,11 @@
+"""Request-scoped context management for pymai framework.
+
+This module provides the Context class for managing request-scoped data
+such as deadlines, tracing information, authentication, retries, and
+other cross-cutting concerns. The Context uses contextvars for thread-safe
+propagation through the call stack.
+"""
+
 import time
 import uuid
 from contextvars import ContextVar, Token
@@ -7,11 +15,21 @@ import pydantic
 
 
 def _is_wall_clock_time(t: float) -> bool:
-    """Checks if time.time() was used.
+    """Checks if time.time() was used instead of time.monotonic().
 
-    We will use a 10 year difference between monotonic
-    and wall clock. If the difference is greater than 10 years,
-    we can assume that time.time() was used.
+    This function detects whether a timestamp was created using wall clock
+    time (time.time()) instead of monotonic time (time.monotonic()). It
+    uses a 10-year threshold to distinguish between the two time sources.
+
+    Args:
+        t: Timestamp to check
+
+    Returns:
+        True if the timestamp appears to be wall clock time, False otherwise
+
+    Note:
+        This is used to enforce the use of monotonic time for deadlines
+        to ensure consistent behavior across system clock changes.
     """
     ONE_YEAR_IN_SECONDS = 365 * 24 * 60 * 60
     threshold = 10 * ONE_YEAR_IN_SECONDS
@@ -19,7 +37,32 @@ def _is_wall_clock_time(t: float) -> bool:
 
 
 class Context(pydantic.BaseModel):
-    """Request-scoped carrier for deadlines, tracing, auth, retries, etc."""
+    """Request-scoped carrier for deadlines, tracing, auth, retries, etc.
+
+    The Context class provides a unified way to carry request-scoped data
+    through the call stack. It uses contextvars for thread-safe propagation
+    and Pydantic for validation and serialization.
+
+    Key features:
+    - Deadline management with monotonic time validation
+    - Metadata storage for arbitrary key-value pairs
+    - Retry tracking and step identification
+    - OpenTelemetry span integration
+    - Automatic context propagation through modules
+
+    The Context enforces the use of monotonic time for deadlines to ensure
+    consistent behavior across system clock changes.
+
+    Example:
+        # Create context with timeout
+        ctx = Context(deadline=time.monotonic() + 30)
+
+        # Add metadata
+        ctx.metadata["user_id"] = "12345"
+
+        # Access current context
+        current = Context.current()
+    """
 
     model_config = pydantic.ConfigDict(extra="ignore")
 
@@ -40,6 +83,22 @@ class Context(pydantic.BaseModel):
     # ------------------------------------------------------------------
     @pydantic.field_validator("deadline")  # type: ignore[misc]
     def validate_deadline(cls, v: float | None) -> float | None:
+        """Validates that deadline uses monotonic time.
+
+        This validator ensures that deadlines are specified using monotonic
+        time (time.monotonic()) rather than wall clock time (time.time()).
+        This prevents issues with system clock changes affecting deadline
+        calculations.
+
+        Args:
+            v: Deadline value to validate
+
+        Returns:
+            The validated deadline value
+
+        Raises:
+            ValueError: If deadline uses wall clock time instead of monotonic time
+        """
         if v is not None and _is_wall_clock_time(v):
             raise ValueError("'deadline' must be monotonic time")
         return v
@@ -49,16 +108,33 @@ class Context(pydantic.BaseModel):
     # ------------------------------------------------------------------
     @staticmethod
     def from_kwargs(src: dict[str, Any] | None) -> "Context":
-        """Extract (or build) a **Context** from a kwargs dict.
+        """Extracts or builds a Context from a kwargs dictionary.
 
-        * If `ctx` holds a *Context* object, return it.
-        * Consumes `timeout` (seconds) -> absolute `deadline`.
-        * Copies remaining **non-private** keys (not starting with "_") into
-          `metadata` so they propagate through the graph.
-        * Pops the consumed keys from *src* so they won't reach user
-          `forward()` signatures.
+        This method processes a kwargs dictionary to extract or build a Context
+        object. It handles several key transformations:
 
-        Note: This is a destructuve function: The input dict is modified.
+        1. If 'ctx' key contains a Context object, it uses that as the base
+        2. Converts 'timeout' (seconds) to absolute 'deadline' using monotonic time
+        3. Copies non-private keys (not starting with "_") into metadata
+        4. Removes consumed keys from the source dict to prevent leakage
+
+        Args:
+            src: Source dictionary containing context-related keys, or None
+
+        Returns:
+            A Context object built from the source dictionary
+
+        Raises:
+            TypeError: If src is not a dict or None
+            ValueError: If both 'deadline' and 'timeout' are specified
+            TypeError: If 'ctx' is not a Context object
+
+        Example:
+            kwargs = {"timeout": 30, "user_id": "12345"}
+            ctx = Context.from_kwargs(kwargs)
+            # ctx.deadline will be set to time.monotonic() + 30
+            # ctx.metadata will contain {"user_id": "12345"}
+            # kwargs will be modified to remove consumed keys
         """
         if src is None:
             return Context()
@@ -106,16 +182,62 @@ class Context(pydantic.BaseModel):
     # ------------------------------------------------------------------
     @classmethod
     def current(cls) -> "Context":
-        """Get the current context."""
+        """Gets the current context from the contextvars stack.
+
+        This method retrieves the current Context from the contextvars stack.
+        If no context exists, it creates a new default Context and sets it
+        as the current context.
+
+        Returns:
+            The current Context object
+
+        Example:
+            ctx = Context.current()
+            print(f"Current deadline: {ctx.deadline}")
+        """
         return cls.get()
 
     @classmethod
     def set(cls, **kwargs: Any) -> Token:
+        """Sets a new context as the current context.
+
+        This method creates a new Context from the provided kwargs and
+        sets it as the current context in the contextvars stack. It returns
+        a token that can be used to reset the context later.
+
+        Args:
+            **kwargs: Keyword arguments to build the Context from
+
+        Returns:
+            A token that can be used to reset the context
+
+        Example:
+            token = Context.set(timeout=30, user_id="12345")
+            try:
+                # Current context has timeout and user_id
+                ctx = Context.current()
+            finally:
+                Context.reset(token)
+        """
         ctx = Context.from_kwargs(kwargs)
         return cls.__current_ctx.set(ctx)
 
     @classmethod
     def get(cls) -> "Context":
+        """Gets the current context, creating a new one if none exists.
+
+        This method retrieves the current Context from the contextvars stack.
+        If no context exists, it creates a new default Context and sets it
+        as the current context before returning it.
+
+        Returns:
+            The current Context object
+
+        Example:
+            ctx = Context.get()
+            if ctx.deadline and time.monotonic() > ctx.deadline:
+                raise TimeoutError("Request deadline exceeded")
+        """
         try:
             return cls.__current_ctx.get()
         except LookupError:
@@ -125,4 +247,21 @@ class Context(pydantic.BaseModel):
 
     @classmethod
     def reset(cls, token: Token) -> None:
+        """Resets the context to a previous state using a token.
+
+        This method resets the contextvars stack to the state represented
+        by the provided token. This is typically used to restore the context
+        after temporarily setting a new context.
+
+        Args:
+            token: Token returned from a previous Context.set() call
+
+        Example:
+            token = Context.set(timeout=30)
+            try:
+                # Use the new context
+                result = await some_operation()
+            finally:
+                Context.reset(token)  # Restore previous context
+        """
         return cls.__current_ctx.reset(token)
