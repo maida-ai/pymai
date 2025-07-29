@@ -49,6 +49,7 @@ class Context(pydantic.BaseModel):
     - Retry tracking and step identification
     - OpenTelemetry span integration
     - Automatic context propagation through modules
+    - Context manager support for automatic cleanup
 
     The Context enforces the use of monotonic time for deadlines to ensure
     consistent behavior across system clock changes.
@@ -62,6 +63,11 @@ class Context(pydantic.BaseModel):
 
         # Access current context
         current = Context.current()
+
+        # Use as context manager
+        with Context.with_(timeout=30, user_id="12345"):
+            # Context is automatically set and reset
+            result = await some_operation()
     """
 
     model_config = pydantic.ConfigDict(extra="ignore")
@@ -77,6 +83,45 @@ class Context(pydantic.BaseModel):
     retry_count: int = 0
     step_id: str = pydantic.Field(default_factory=lambda: uuid.uuid4().hex)
     span: Any | None = None  # OpenTelemetry span (optional)
+
+    # ------------------------------------------------------------------
+    # Context manager support
+    # ------------------------------------------------------------------
+    _token: Token | None = None  # Internal token for context manager
+
+    def __enter__(self) -> "Context":
+        """Enters the context manager, setting this context as current.
+
+        This method sets this Context instance as the current context
+        and stores the token for later cleanup in __exit__.
+
+        Returns:
+            Self for method chaining
+
+        Example:
+            ctx = Context(timeout=30)
+            with ctx:
+                # This context is now current
+                current = Context.current()
+        """
+        self._token = self.__current_ctx.set(self)
+        return self
+
+    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+        """Exits the context manager, resetting to previous context.
+
+        This method resets the context to the previous state using
+        the stored token, ensuring proper cleanup regardless of
+        how the context manager is exited.
+
+        Args:
+            exc_type: Exception type if an exception occurred
+            exc_val: Exception value if an exception occurred
+            exc_tb: Exception traceback if an exception occurred
+        """
+        if self._token is not None:
+            self.__current_ctx.reset(self._token)
+            self._token = None
 
     # ------------------------------------------------------------------
     # Validation
@@ -221,6 +266,33 @@ class Context(pydantic.BaseModel):
         """
         ctx = Context.from_kwargs(kwargs)
         return cls.__current_ctx.set(ctx)
+
+    @classmethod
+    def with_(cls, **kwargs: Any) -> "Context":
+        """Creates a context manager for temporary context settings.
+
+        This method creates a Context object that can be used as a context
+        manager. When entered, it sets the context as current, and when
+        exited, it automatically resets to the previous context.
+
+        The new context inherits from the current context, so metadata
+        and other fields are properly merged.
+
+        Args:
+            **kwargs: Keyword arguments to build the Context from
+
+        Returns:
+            A Context object that can be used as a context manager
+
+        Example:
+            with Context.with_(timeout=30, user_id="12345"):
+                # Context is automatically set and reset
+                result = await some_operation()
+        """
+        # Start with current context as base
+        current_ctx = cls.get()
+        kwargs["ctx"] = current_ctx
+        return cls.from_kwargs(kwargs)
 
     @classmethod
     def get(cls) -> "Context":

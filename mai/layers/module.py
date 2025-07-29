@@ -95,10 +95,10 @@ class Module:
 
         This method is the main entry point for module execution. It:
         1. Merges static configuration with call-time settings
-        2. Sets up context propagation
+        2. Sets up context propagation using context manager
         3. Detects if forward() is sync or async
         4. Executes in appropriate execution mode
-        5. Cleans up context on completion
+        5. Automatically cleans up context on completion
 
         Args:
             *args: Positional arguments to pass to forward()
@@ -112,16 +112,23 @@ class Module:
             Exception: Any exception raised by the forward() method
         """
         # merge static + call-time settings
-        kwargs = {**self._static_cfg, **kwargs}
-        ctx_token = Context.set(**kwargs)
-        try:
+        all_kwargs = {**self._static_cfg, **kwargs}
+
+        # Extract context-related keys for context manager
+        context_keys = {"timeout", "deadline", "ctx", "retry_count", "step_id", "span"}
+        context_kwargs = {k: v for k, v in all_kwargs.items() if k in context_keys}
+        forward_kwargs = {k: v for k, v in all_kwargs.items() if k not in context_keys}
+
+        with Context.with_(**context_kwargs):
             fn = inspect.unwrap(self.forward)
             if inspect.iscoroutinefunction(fn):
-                return await fn(*args, **kwargs)
+                return await fn(*args, **forward_kwargs)
+
             # run sync forward in a worker thread so event loop stays responsive
-            return await anyio.to_thread.run_sync(fn, *args, **kwargs)
-        finally:
-            Context.reset(ctx_token)
+            def sync_wrapper():  # type: ignore[no-untyped-def]
+                return fn(*args, **forward_kwargs)
+
+            return await anyio.to_thread.run_sync(sync_wrapper)
 
     def forward(self, *args: Any, **kwargs: Any) -> Any:
         """Core processing logic to be implemented by subclasses.

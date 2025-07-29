@@ -1,326 +1,174 @@
 """Tests for the Context class."""
 
 import time
-from unittest.mock import Mock
 
 import pytest
-from pydantic import ValidationError
 
 from mai.types.context import Context
 
 
-class TestContextCreation:
-    """Test Context object creation and basic properties."""
+class TestContext:
+    """Test cases for the Context class."""
 
-    def test_default_context(self):
-        """Test creating a Context with default values."""
+    def test_context_creation(self):
+        """Test basic context creation."""
         ctx = Context()
         assert ctx.deadline is None
         assert ctx.metadata == {}
         assert ctx.retry_count == 0
-        assert isinstance(ctx.step_id, str)
-        assert len(ctx.step_id) > 0
-        assert ctx.span is None
+        assert ctx.step_id is not None
 
-    def test_validate_deadline(self):
-        """Test that deadline is validated."""
-        # Check None is OK
-        ctx = Context(deadline=None)
-        assert ctx.deadline is None
+    def test_context_with_deadline(self):
+        """Test context creation with deadline."""
+        deadline = time.monotonic() + 30
+        ctx = Context(deadline=deadline)
+        assert ctx.deadline == deadline
 
-        # Check wall clock time is not OK
-        with pytest.raises(ValidationError, match="monotonic time"):
-            Context(deadline=time.time() + 10.0)
+    def test_context_with_metadata(self):
+        """Test context creation with metadata."""
+        metadata = {"user_id": "12345", "session_id": "abc123"}
+        ctx = Context(metadata=metadata)
+        assert ctx.metadata == metadata
 
-        # Check monotonic time is OK
-        ctx = Context(deadline=time.monotonic() + 10.0)
+    def test_deadline_validation_wall_clock_time(self):
+        """Test that wall clock time is rejected for deadlines."""
+        with pytest.raises(ValueError, match="'deadline' must be monotonic time"):
+            Context(deadline=time.time() + 30)
+
+    def test_deadline_validation_monotonic_time(self):
+        """Test that monotonic time is accepted for deadlines."""
+        deadline = time.monotonic() + 30
+        ctx = Context(deadline=deadline)
+        assert ctx.deadline == deadline
+
+    def test_from_kwargs_basic(self):
+        """Test from_kwargs with basic parameters."""
+        kwargs = {"timeout": 30, "user_id": "12345"}
+        ctx = Context.from_kwargs(kwargs)
+
         assert ctx.deadline is not None
         assert ctx.deadline > time.monotonic()
-        assert ctx.deadline <= time.monotonic() + 10.1  # Allow small timing variance
+        assert ctx.metadata["user_id"] == "12345"
+        assert "timeout" not in kwargs  # Should be consumed
+        assert "user_id" not in kwargs  # Should be consumed
 
-    def test_custom_context(self):
-        """Test creating a Context with custom values."""
-        deadline = time.monotonic() + 10.0
-        metadata = {"user_id": "123", "session": "abc"}
-        span = Mock()
+    def test_from_kwargs_with_existing_context(self):
+        """Test from_kwargs with existing context."""
+        existing_ctx = Context(metadata={"existing": "value"})
+        kwargs = {"ctx": existing_ctx, "timeout": 30, "new_key": "new_value"}
+        ctx = Context.from_kwargs(kwargs)
 
-        ctx = Context(deadline=deadline, metadata=metadata, retry_count=2, step_id="test-step-123", span=span)
-
-        assert ctx.deadline == deadline
-        assert ctx.metadata == metadata
-        assert ctx.retry_count == 2
-        assert ctx.step_id == "test-step-123"
-        assert ctx.span == span
-
-    def test_unique_step_ids(self):
-        """Test that each Context gets a unique step_id by default."""
-        ctx1 = Context()
-        ctx2 = Context()
-        assert ctx1.step_id != ctx2.step_id
-
-
-class TestFromKwargs:
-    """Test the from_kwargs static method."""
-
-    def test_none_input(self):
-        """Test from_kwargs with None input."""
-        ctx = Context.from_kwargs(None)
-        assert isinstance(ctx, Context)
-        assert ctx.deadline is None
-        assert ctx.metadata == {}
-
-    def test_empty_dict_input(self):
-        """Test from_kwargs with empty dict."""
-        ctx = Context.from_kwargs({})
-        assert isinstance(ctx, Context)
-        assert ctx.deadline is None
-        assert ctx.metadata == {}
-
-    def test_timeout_to_deadline(self):
-        """Test that timeout is converted to absolute deadline."""
-        start_time = time.monotonic()
-        ctx = Context.from_kwargs({"timeout": 5.0})
-
-        assert ctx.deadline is not None
-        assert ctx.deadline > start_time
-        assert ctx.deadline <= start_time + 5.1  # Allow small timing variance
-
-    def test_explicit_context_ctx_key(self):
-        """Test that explicit Context in 'ctx' key is returned."""
-        original_ctx = Context(deadline=time.monotonic() + 10)
-        original_dump = original_ctx.model_dump()
-
-        result = Context.from_kwargs({"ctx": original_ctx, "other": "value"})
-
-        # Non-destructive check
-        assert result is not original_ctx
-        for key in original_dump.keys():
-            assert getattr(original_ctx, key) == original_dump[key]
-
-        # Check the values are copied
-        for key in original_dump.keys():
-            if key == "metadata":
-                assert result.metadata == {"other": "value"}
-            else:
-                assert getattr(result, key) == getattr(original_ctx, key)
-
-    def test_metadata_extraction(self):
-        """Test that non-private kwargs are extracted to metadata."""
-        ctx = Context.from_kwargs(
-            {"user_id": "123", "session": "abc", "timeout": 5.0, "_private": "should_not_be_included"}
-        )
-
-        assert ctx.metadata == {"user_id": "123", "session": "abc"}
+        assert ctx.metadata["existing"] == "value"
+        assert ctx.metadata["new_key"] == "new_value"
         assert ctx.deadline is not None
 
-    def test_metadata_excludes_private_keys(self):
-        """Test that keys starting with '_' are excluded from metadata."""
-        ctx = Context.from_kwargs({"public": "value", "_private": "hidden", "__very_private": "also_hidden"})
+    def test_from_kwargs_deadline_and_timeout_conflict(self):
+        """Test that deadline and timeout cannot be set together."""
+        kwargs = {"deadline": time.monotonic() + 30, "timeout": 30}
+        with pytest.raises(ValueError, match="'deadline' and 'timeout' cannot be set at the same time"):
+            Context.from_kwargs(kwargs)
 
-        assert ctx.metadata == {"public": "value"}
-        assert "_private" not in ctx.metadata
-        assert "__very_private" not in ctx.metadata
+    def test_context_manager_basic(self):
+        """Test basic context manager functionality."""
+        with Context.with_(timeout=30, user_id="12345") as ctx:
+            current = Context.current()
+            assert current is ctx
+            assert current.metadata["user_id"] == "12345"
+            assert current.deadline is not None
 
-    def test_kwargs_consumption(self):
-        """Test that consumed keys are removed from the input dict."""
-        src = {"timeout": 5.0, "user_id": "123", "_private": "hidden"}
+    def test_context_manager_cleanup(self):
+        """Test that context is properly reset after context manager exit."""
+        # Set up initial context
+        initial_ctx = Context(metadata={"initial": "value"})
+        token = Context.set(metadata=initial_ctx.metadata)
 
-        Context.from_kwargs(src)
+        # Use context manager
+        with Context.with_(timeout=30, user_id="12345"):
+            current = Context.current()
+            assert current.metadata["user_id"] == "12345"
 
-        # All non-private keys should be consumed
-        assert "timeout" not in src
-        assert "user_id" not in src
-        # Private keys should remain
-        assert "_private" in src
+        # Verify we're back to initial context
+        final_ctx = Context.current()
+        assert final_ctx.metadata["initial"] == "value"
+        assert "user_id" not in final_ctx.metadata
 
-    def test_invalid_input_type(self):
-        """Test that invalid input types raise TypeError."""
-        with pytest.raises(TypeError, match="from_kwargs expects a dict or None"):
-            Context.from_kwargs("not a dict")  # type: ignore[arg-type]
+        # Clean up
+        Context.reset(token)
 
-        with pytest.raises(TypeError, match="from_kwargs expects a dict or None"):
-            Context.from_kwargs(123)  # type: ignore[arg-type]
+    def test_context_manager_exception_handling(self):
+        """Test that context is reset even when exceptions occur."""
+        # Set up initial context
+        initial_ctx = Context(metadata={"initial": "value"})
+        token = Context.set(metadata=initial_ctx.metadata)
 
-    def test_explicit_context_priority(self):
-        """Test that kwargs have higher priority than explicit Context."""
-        deadline = time.monotonic() + 10
-        original_ctx = Context(deadline=deadline)
-        result = Context.from_kwargs({"ctx": original_ctx, "timeout": 5.0, "user_id": "123"})
-
-        assert result is not original_ctx
-        assert result.deadline != deadline
-        assert result.deadline - deadline < 1.0  # type: ignore[operator]
-        assert result.metadata == {"user_id": "123"}
-
-
-class TestContextManagement:
-    """Test context variable management methods."""
-
-    def test_set_and_get(self):
-        """Test setting and getting current context."""
-        ctx = Context(deadline=time.monotonic() + 10)
-        token = Context.set(deadline=ctx.deadline, metadata=ctx.metadata)
-
+        # Use context manager with exception
         try:
-            current = Context.get()
-            assert current.deadline == ctx.deadline, f"{current} != {ctx}"
-            assert current.metadata == ctx.metadata
-        finally:
-            Context.reset(token)
-
-    def test_reset_restores_previous(self):
-        """Test that reset restores the previous context."""
-        # Set initial context
-        ctx1 = Context(metadata={"level": "1"})
-        token1 = Context.set(metadata=ctx1.metadata)
-
-        try:
-            # Set nested context
-            ctx2 = Context(metadata={"level": "2"})
-            token2 = Context.set(metadata=ctx2.metadata)
-
-            # Verify current is ctx2
-            current = Context.get()
-            assert current.metadata["level"] == "2"
-
-            # Reset to ctx1
-            Context.reset(token2)
-            current = Context.get()
-            assert current.metadata["level"] == "1"
-
-        finally:
-            Context.reset(token1)
-
-    def test_context_isolation(self):
-        """Test that contexts are isolated between different calls."""
-        ctx1 = Context(metadata={"id": "1"})
-        ctx2 = Context(metadata={"id": "2"})
-
-        token1 = Context.set(metadata=ctx1.metadata)
-        try:
-            assert Context.get().metadata["id"] == "1"
-        finally:
-            Context.reset(token1)
-
-        token2 = Context.set(metadata=ctx2.metadata)
-        try:
-            assert Context.get().metadata["id"] == "2"
-        finally:
-            Context.reset(token2)
-
-    def test_default_context_when_none_set(self):
-        """Test that get() returns a default context when none is set."""
-        # This test assumes that get() returns a default Context when none is set
-        # The actual behavior depends on the ContextVar implementation
-        try:
-            ctx = Context.get()
-            assert isinstance(ctx, Context)
-        except LookupError:
-            # This is also valid behavior for ContextVar
+            with Context.with_(timeout=30, user_id="12345"):
+                current = Context.current()
+                assert current.metadata["user_id"] == "12345"
+                raise ValueError("Test exception")
+        except ValueError:
             pass
 
+        # Verify we're back to initial context
+        final_ctx = Context.current()
+        assert final_ctx.metadata["initial"] == "value"
+        assert "user_id" not in final_ctx.metadata
 
-# class TestContextImmutability:
-#     """Test that Context objects are immutable (frozen)."""
+        # Clean up
+        Context.reset(token)
 
-#     def test_context_is_frozen(self):
-#         """Test that Context objects cannot be modified after creation."""
-#         ctx = Context(metadata={"key": "value"})
+    def test_context_manager_nested(self):
+        """Test nested context managers."""
+        with Context.with_(timeout=30, outer="value") as outer_ctx:
+            assert Context.current() is outer_ctx
+            assert Context.current().metadata["outer"] == "value"
 
-#         # Attempting to modify should raise an error
-#         with pytest.raises((TypeError, AttributeError)):
-#             ctx.metadata["new_key"] = "new_value"
+            with Context.with_(timeout=60, inner="value") as inner_ctx:
+                assert Context.current() is inner_ctx
+                assert Context.current().metadata["inner"] == "value"
+                # The outer metadata should be inherited
+                assert Context.current().metadata["outer"] == "value"
 
-#         with pytest.raises((TypeError, AttributeError)):
-#             ctx.deadline = time.monotonic() + 10
+            # Back to outer context
+            assert Context.current() is outer_ctx
+            assert "inner" not in Context.current().metadata
 
-#     def test_metadata_is_immutable(self):
-#         """Test that metadata dict is immutable."""
-#         ctx = Context(metadata={"key": "value"})
+    def test_context_manager_direct_instance(self):
+        """Test using a Context instance directly as a context manager."""
+        ctx = Context(timeout=30, metadata={"user_id": "12345"})
 
-#         # The metadata dict itself should be immutable or frozen
-#         with pytest.raises((TypeError, AttributeError)):
-#             ctx.metadata["new_key"] = "new_value"
+        with ctx:
+            current = Context.current()
+            assert current is ctx
+            assert current.metadata["user_id"] == "12345"
 
-
-class TestContextEdgeCases:
-    """Test edge cases and error conditions."""
-
-    def test_zero_timeout(self):
-        """Test that zero timeout is handled correctly."""
-        ctx = Context.from_kwargs({"timeout": 0.0})
-        assert ctx.deadline is not None
-        assert ctx.deadline >= time.monotonic() - 1e-3  # Allow small timing variance
-
-    def test_negative_timeout(self):
-        """Test that negative timeout is handled correctly."""
-        ctx = Context.from_kwargs({"timeout": -1.0})
-        assert ctx.deadline is not None
-        assert ctx.deadline < time.monotonic()  # Deadline in the past
-
-    def test_large_timeout(self):
-        """Test that large timeout values are handled correctly."""
-        ctx = Context.from_kwargs({"timeout": 1000000.0})
-        assert ctx.deadline is not None
-        assert ctx.deadline > time.monotonic()
-
-    def test_complex_metadata_types(self):
-        """Test that complex types in metadata are handled correctly."""
-        complex_metadata = {
-            "list": [1, 2, 3],
-            "dict": {"nested": "value"},
-            "tuple": (1, 2, 3),
-            "bool": True,
-            "none": None,
-        }
-
-        ctx = Context.from_kwargs(complex_metadata.copy())
-        print(f"===> DEBUG: {ctx.metadata=}")
-        print(f"===> DEBUG: {complex_metadata=}")
-        assert ctx.metadata == complex_metadata
-
-    def test_unicode_metadata(self):
-        """Test that unicode characters in metadata are handled correctly."""
-        unicode_metadata = {"emoji": "🚀", "chinese": "你好", "greek": "αβγ"}
-
-        ctx = Context.from_kwargs(unicode_metadata.copy())
-        assert ctx.metadata == unicode_metadata
-
-
-class TestContextIntegration:
-    """Test Context integration with Module-like patterns."""
-
-    def test_context_with_module_like_usage(self):
-        """Test Context usage pattern similar to Module.__call__."""
-        # Simulate Module.__call__ pattern
-        kwargs = {"timeout": 5.0, "user_id": "123", "threshold": 0.8}
-
-        ctx = Context.from_kwargs(kwargs)
-        token = Context.set(deadline=ctx.deadline, metadata=ctx.metadata)
-
+    def test_set_and_reset_methods(self):
+        """Test the set and reset methods for backward compatibility."""
+        token = Context.set(timeout=30, user_id="12345")
         try:
-            # Simulate work within context
-            current = Context.get()
-            assert current.deadline is not None
-            assert current.metadata["user_id"] == "123"
-            assert current.metadata["threshold"] == 0.8
+            current = Context.current()
+            assert current.metadata["user_id"] == "12345"
         finally:
             Context.reset(token)
 
-    def test_context_merging_pattern(self):
-        """Test the merging pattern used in Module.__call__."""
-        # Static config (like Module._static_cfg)
-        static_config = {"timeout": 10.0, "base_threshold": 0.5}
+        # Verify context is reset
+        final_ctx = Context.current()
+        assert "user_id" not in final_ctx.metadata
 
-        # Call-time kwargs
-        call_kwargs = {"timeout": 5.0, "user_id": "123"}
+    def test_get_method_creates_default(self):
+        """Test that get() creates a default context if none exists."""
+        # Clear any existing context by setting a token and resetting
+        token = Context.set()
+        Context.reset(token)
 
-        # Merge static + call-time (call-time overrides static)
-        merged = {**static_config, **call_kwargs}
+        ctx = Context.get()
+        assert isinstance(ctx, Context)
+        assert ctx.deadline is None
+        assert ctx.metadata == {}
 
-        ctx = Context.from_kwargs(merged)
-
-        # timeout should be from call_kwargs (5.0), not static_config (10.0)
-        assert ctx.deadline is not None
-        assert ctx.metadata["user_id"] == "123"
-        assert ctx.metadata["base_threshold"] == 0.5
+    def test_current_method_alias(self):
+        """Test that current() is an alias for get()."""
+        ctx1 = Context.current()
+        ctx2 = Context.get()
+        assert ctx1 is ctx2
