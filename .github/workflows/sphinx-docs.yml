@@ -3,8 +3,20 @@ name: Build and Deploy Documentation
 on:
   push:
     branches: [ main, develop ]
+    paths:
+      - 'docs/**'
+      - 'mai/**'
+      - 'pyproject.toml'
+      - 'poetry.lock'
+      - '.github/workflows/sphinx-docs.yml'
   pull_request:
     branches: [ main, develop ]
+    paths:
+      - 'docs/**'
+      - 'mai/**'
+      - 'pyproject.toml'
+      - 'poetry.lock'
+      - '.github/workflows/sphinx-docs.yml'
   workflow_dispatch:
 
 permissions:
