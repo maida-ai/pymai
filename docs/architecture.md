@@ -86,14 +86,20 @@ class Context(pydantic.BaseModel):
     def reset(cls, token: Token) -> None: ...
 ```
 
-### 3.3 `Layer` & `Payload`
+### 3.3 Composite Modules (Invisible Execution)
+Composite modules provide invisible execution patterns without exposing an Engine API:
+
+- **`Sequential`**: Chain modules in sequence with automatic sync/async boundary detection
+- **`Parallel`**: Execute modules concurrently with context isolation
+- **`Conditional`**: Execute different modules based on conditions
+- **`Delay`**: Add non-blocking delays for rate limiting
+- **`Retry`**: Automatic retry with exponential backoff
+
+### 3.4 `Layer` & `Payload`
 *Layers* are atomic async callables; **`Payload`** is a strongly-typed envelope auto-generated from user types to ensure safe, structured data flow.
 
-### 3.4 `Graph` (DAG)
+### 3.5 `Graph` (DAG)
 A declarative wrapper that turns interconnected Modules into an executable DAG--optimising chains, inserting casting layers, and emitting a **WorkflowPlan** for replay and persistence.
-
-### 3.5 `Engine`
-Local asyncio + thread-pool scheduler powering **Sequential**, **Parallel**, **BlockingDelay**, **NonBlockingDelay**, and **Conditional** composites. Parallel branches inherit the same `Context`; blocking delays pause within the same task without affecting siblings.
 
 ### 3.6 `TraceHandle`
 Per-call object exposing timings, payload sizes, and error metadata; integrates with OpenTelemetry exporters.
@@ -101,7 +107,7 @@ Per-call object exposing timings, payload sizes, and error metadata; integrates 
 ## 4 Developer Quick-Start
 
 ```python
-from mai.layers import Module, Sequential, Parallel, BlockingDelay
+from mai.layers import Module, Sequential, Parallel, Conditional, Delay, Retry
 from mai.types   import RawText, TokenizedText, Embedding
 from mai.models  import Tokenizer, EmbeddingModel
 from mai.metrics import Metric
@@ -148,12 +154,16 @@ pipeline = Sequential(
     Tokenize(tokenizer),
     Embed(embedding_model),
     Parallel(
-        Agent1(sim_metric).with_(timeout=0.5),
-        Agent2(sim_metric).with_(timeout=0.3)
+        Retry(Agent1(sim_metric), max_retries=2).with_(timeout=0.5),
+        Retry(Agent2(sim_metric), max_retries=2).with_(timeout=0.3)
     ),
     Aggregate(),
-    BlockingDelay(seconds=0.1),
-    Humanize().with_(threshold=0.75)
+    Delay(seconds=0.1),
+    Conditional(
+        condition=lambda score: score > 0.7,
+        true_module=Humanize().with_(threshold=0.75),
+        false_module=lambda score: f"Low confidence: {score:.2f}"
+    )
 ).with_(timeout=1.0)
 
 result = await pipeline(text=["hello world", "Hello, world!"])
@@ -163,14 +173,16 @@ print(result)
 *Highlights*
 
 * **Parallel** executes `Agent1` and `Agent2` concurrently with isolated Context snapshots.
-* **BlockingDelay** pauses the pipeline without leaking state between tasks.
+* **Retry** provides automatic retry with exponential backoff for remote calls.
+* **Delay** adds non-blocking delays for rate limiting.
+* **Conditional** executes different paths based on conditions.
 * User code remains clean; all deadlines and tracing data ride the hidden `Context`.
 
 ## 5 Execution Model
 
 1. **Build phase** -- instantiate Modules/Layers or load a YAML spec -> produces a `Graph`.
 2. **Compile phase** -- optimiser folds trivial chains, inserts casting and async boundaries, emits a **WorkflowPlan**.
-3. **Run phase (local)** -- `Engine` drives asyncio and threads; Context deadlines enforced; Parallel branches inherit the same Context.
+3. **Run phase (local)** -- Invisible execution engine drives asyncio and threads; Context deadlines enforced; Parallel branches inherit the same Context.
 4. **Run phase (distributed, future)** -- WorkflowPlan executed by Temporal-lite runtime with durable state, retries, and remote executors.
 5. **Trace export** -- spans and logs emitted via OTLP JSON.
 
@@ -178,8 +190,8 @@ print(result)
 
 ```
 mai/
- ├─ layers/        # Atomic Layers + unified Module
- ├─ core/          # Optimised back-ends & runtime (Parallel, Delay, etc.)
+ ├─ layers/        # Atomic Layers + unified Module + Composite Modules
+ ├─ core/          # Optimised back-ends & runtime (invisible execution)
  ├─ types/         # Strongly-typed data (Context, Payload...)
  ├─ models/        # Model wrappers (tokenizers, embedders...)
  ├─ metrics/       # Metric Modules
@@ -191,7 +203,7 @@ mai/
 
 | Milestone | Target                                         | ETA            |
 | --------- | ---------------------------------------------- | -------------- |
-| **M-0**   | Core abstractions, Parallel & Delay primitives | **Aug 05 '25** |
+| **M-0**   | Core abstractions, Composite modules, invisible execution | **Aug 05 '25** |
 | **M-1**   | Graph optimiser + YAML loader                  | **Sep 10 '25** |
 | **M-2**   | XCP transport adapter                          | **Oct 30 '25** |
 | **M-3**   | Quantised micro-models                         | **Nov 30 '25** |

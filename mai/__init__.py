@@ -14,14 +14,34 @@ The framework is built around 8 core design principles:
 - Micro-Kernel Core: Minimal core with pluggable backends
 - Durable Workflows: Replay-able, resumable, idempotent steps
 
+Composite modules provide invisible execution patterns:
+- Sequential: Chain modules in sequence
+- Parallel: Execute modules concurrently with context isolation
+- Conditional: Execute based on conditions
+- Delay: Add non-blocking delays
+- Retry: Automatic retry with exponential backoff
+
 Example:
-    from mai.layers import Module
+    from mai.layers import Module, Sequential, Parallel, Conditional
     from mai.types import Context
 
     class MyAgent(Module):
         def forward(self, input_data: str) -> str:
             return f"Processed: {input_data}"
 
-    agent = MyAgent().with_(timeout=30)
-    result = await agent("Hello, World!")
+    # Complex workflow with invisible execution
+    workflow = Sequential(
+        MyAgent(),
+        Parallel(
+            Agent1().with_(timeout=5.0),
+            Agent2().with_(timeout=3.0)
+        ),
+        Conditional(
+            condition=lambda data: len(data) > 10,
+            true_module=Processor(),
+            false_module=SimpleProcessor()
+        )
+    )
+
+    result = await workflow("Hello, World!")
 """

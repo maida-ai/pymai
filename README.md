@@ -12,6 +12,7 @@
 
 * **Unified `Module` abstraction** -- located in `mai.layers`; write `forward()` once (sync **or** async) and chain Modules like plain functions.
 * **Invisible Context** -- deadlines, tracing, auth, and per-request overrides propagate via `contextvars`; no boilerplate parameters.
+* **Composite Modules** -- `Sequential`, `Parallel`, `Conditional`, `Delay`, `Retry` for complex workflows without Engine API exposure.
 * **Zero-copy I/O** -- user dataclasses/Pydantic models auto-cast to internal `Payload` envelopes.
 * **Observability-first** -- OpenTelemetry spans and rich error metadata out of the box.
 * **Workflow-ready** -- roadmap includes a Temporal-style engine for retries, checkpoints, and distributed execution.
@@ -25,14 +26,14 @@
 $ git clone https://github.com/maida-ai/pymai
 $ cd pymai && pip install -e .[dev]
 
-# 2. Run the toy pipeline demo
-$ python examples/similarity_demo.py
+# 2. Run the invisible execution demo
+$ python examples/invisible_execution_demo.py
 ```
 
 ### Example Snippet
 
 ```python
-from mai.layers import Module, Sequential
+from mai.layers import Module, Sequential, Parallel, Conditional, Retry
 from mai.types   import RawText, TokenizedText, Embedding
 from mai.models  import Tokenizer, EmbeddingModel
 from mai.metrics import Metric
@@ -55,20 +56,34 @@ class Similarity(Module):
     def forward(self, a: Embedding, b: Embedding) -> float:
         return self.metric.compute(a, b)
 
-pipeline = Sequential(Tokenize(tok), Embed(embedder), Similarity(sim))
+# Complex workflow with invisible execution
+pipeline = Sequential(
+    Tokenize(tok),
+    Embed(embedder),
+    Parallel(
+        Retry(Similarity(sim_metric), max_retries=2).with_(timeout=5.0),
+        Retry(Similarity(sim_metric), max_retries=2).with_(timeout=3.0)
+    ),
+    Conditional(
+        condition=lambda score: score > 0.7,
+        true_module=lambda score: f"High similarity: {score:.2f}",
+        false_module=lambda score: f"Low similarity: {score:.2f}"
+    )
+)
+
 score = await pipeline(text=["hello world", "Hello, world!"])
 print(score)
 ```
 
-*Notice*: no explicit Context object--timeouts, tracing, and overrides ride an internal `Context` created automatically.
+*Notice*: no explicit Engine API--timeouts, tracing, and overrides ride an internal `Context` created automatically.
 
 
 ## 🏗️ Folder Structure
 
 ```
 mai/
- ├─ layers/        # Atomic Layers + unified Module (torch/nn analogue)
- ├─ core/          # Optimised back-ends (Cython/Rust/C++), runtime engine & tracing
+ ├─ layers/        # Atomic Layers + unified Module + Composite Modules
+ ├─ core/          # Optimised back-ends (Cython/Rust/C++), invisible execution
  ├─ types/         # Strongly-typed data definitions & adapters
  ├─ models/        # High-level model wrappers (tokenisers, embedders...)
  ├─ metrics/       # Metric Modules (similarity, classification metrics...)
@@ -81,7 +96,7 @@ mai/
 
 | Version | Highlights                                                                 | Target   |
 | ------- | -------------------------------------------------------------------------- | -------- |
-| **0.1** | Core abstractions (`mai.layers`), local Engine (`mai.core`), demo pipeline | Aug 2025 |
+| **0.1** | Core abstractions (`mai.layers`), Composite modules, invisible execution | Aug 2025 |
 | 0.2     | `Graph` optimiser + YAML loader                                            | Sep 2025 |
 | 0.3     | XCP transport adapter                                                      | Oct 2025 |
 | 0.4     | Quantised micro-model library                                              | Nov 2025 |
