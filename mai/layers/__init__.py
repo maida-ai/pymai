@@ -12,17 +12,32 @@ The Module class implements the core design principles:
 - Configuration management via .with_() method
 - Type-safe I/O with runtime validation
 
+Composite modules provide invisible execution patterns:
+- Sequential: Chain modules in sequence
+- Parallel: Execute modules concurrently
+- Conditional: Execute based on conditions
+- Delay: Add non-blocking delays
+- Retry: Automatic retry with backoff
+
 Example:
-    from mai.layers import Module
+    from mai.layers import Module, Sequential, Parallel
 
     class TextProcessor(Module):
         def forward(self, text: str) -> str:
             return text.upper()
 
-    processor = TextProcessor().with_(timeout=10)
-    result = await processor("hello world")
+    # Invisible execution - no Engine API needed
+    pipeline = Sequential(
+        TextProcessor(),
+        Parallel(
+            Module1(),
+            Module2()
+        )
+    )
+    result = await pipeline("hello world")
 """
 
+from .composite import Conditional, Delay, Parallel, Retry, Sequential
 from .module import Module
 
-__all__ = ["Module"]
+__all__ = ["Module", "Sequential", "Parallel", "Conditional", "Delay", "Retry"]
