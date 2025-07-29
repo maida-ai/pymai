@@ -138,8 +138,10 @@ module = [
     "tests.*",
     "examples.*",
 ]
-disallow_untyped_defs = false
-disallow_incomplete_defs = false
+disallow_untyped_defs = false     # Tests are OK to be untyped
+disallow_incomplete_defs = false  # Tests are OK to be incomplete
+warn_unreachable = false          # Tests are OK to be unreachable
+warn_return_any = false           # Tests are OK to return any
 
 [tool.pytest.ini_options]
 minversion = "7.0"
