@@ -55,7 +55,8 @@ async def demonstrate_context_manager():
         print(f"Back to outer context: {Context.current().metadata}")
 
     print("\n=== Direct Context Instance Usage ===")
-    ctx = Context(timeout=15, metadata={"direct": "usage"})
+    deadline = time.monotonic() + 15
+    ctx = Context(deadline=deadline, metadata={"direct": "usage"})
     with ctx:
         result = await processor("direct context")
         print(f"Result: {result}")

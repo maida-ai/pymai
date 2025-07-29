@@ -64,6 +64,7 @@ logs/
 *.temp
 
 # Poetry
+.poetry/
 poetry.lock
 
 # MyPy
