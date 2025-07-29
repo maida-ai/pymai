@@ -56,6 +56,35 @@ class TestContextFromKwargs:
         assert "timeout" not in kwargs  # Should be consumed
         assert "user_id" not in kwargs  # Should be consumed
 
+    def test_from_kwargs_src_is_none(self):
+        """Test from_kwargs with None input."""
+        ctx = Context.from_kwargs(None)
+        assert ctx.deadline is None
+        assert ctx.metadata == {}
+        assert ctx.retry_count == 0
+        assert ctx.step_id is not None
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            "123",  # str
+            123,  # int
+            123.123,  # float
+            [1, 2, 3],  # list
+            (1, 2, 3),  # tuple
+            object(),  # object
+        ],
+    )
+    def test_from_kwargs_src_is_non_dict(self, value):
+        """Test from_kwargs with non-dict input."""
+        with pytest.raises(TypeError, match="from_kwargs expects a dict or None"):
+            Context.from_kwargs(value)
+
+    def test_from_kwargs_ctx_is_non_context(self):
+        """Test from_kwargs with non-Context input."""
+        with pytest.raises(TypeError, match="'ctx' must be a Context object"):
+            Context.from_kwargs({"ctx": "not a context"})
+
     def test_from_kwargs_with_existing_context(self):
         """Test from_kwargs with existing context."""
         existing_ctx = Context(metadata={"existing": "value"})
