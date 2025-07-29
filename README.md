@@ -1,3 +1,8 @@
+[![codecov](https://codecov.io/github/maida-ai/pymai/graph/badge.svg?token=ORFLBUT5HP)](https://codecov.io/github/maida-ai/pymai)
+[![unittests](https://github.com/maida-ai/pymai/actions/workflows/tests.yml/badge.svg)](https://github.com/maida-ai/pymai/actions/workflows/tests.yml)
+[![documentation](https://github.com/maida-ai/pymai/actions/workflows/sphinx-docs.yml/badge.svg)](https://github.com/maida-ai/pymai/actions/workflows/sphinx-docs.yml)
+
+
 # pymai
 
 **Tiny-yet-powerful Python framework for composable AI agents and durable workflows.**
